@@ -1,3 +1,7 @@
 .idea
-target
+target/
 *.iml
+*.iws
+*.ipr
+.mvn
+mvnw*
