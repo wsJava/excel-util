@@ -1,8 +1,10 @@
 package top.lvjp.excel.utils;
 
 import org.apache.poi.ss.usermodel.Cell;
+import org.apache.poi.ss.usermodel.CellType;
 
 import java.math.BigDecimal;
+import java.text.DateFormat;
 import java.util.Date;
 
 /**
@@ -10,42 +12,6 @@ import java.util.Date;
  * @date 2020/8/23
  */
 public class ExcelReadUtils {
-
-    /*
-     * *****************************
-     * 从 Excel 表格中获取数据
-     * 以下方法可能抛出 NPE, Cell 可能为 null
-     * *****************************
-     */
-
-    public static Boolean getBoolFromCell(Cell cell) {
-        return cell.getBooleanCellValue();
-    }
-
-    public static String getStrFromCell(Cell cell) {
-        return cell.getStringCellValue().trim();
-    }
-
-    public static Integer getIntFromCell(Cell cell) {
-        return (int) cell.getNumericCellValue();
-    }
-
-    public static Long getLongFromCell(Cell cell) {
-        return (long) cell.getNumericCellValue();
-    }
-
-    public static BigDecimal getDecimalFromCell(Cell cell) {
-        return getDecimalFromCell(cell, 2);
-    }
-
-    public static BigDecimal getDecimalFromCell(Cell cell, int scale) {
-        return BigDecimal.valueOf(cell.getNumericCellValue()).setScale(scale, BigDecimal.ROUND_DOWN);
-    }
-
-    public static Date getDateFromCell(Cell cell) {
-        return cell.getDateCellValue();
-    }
-
 
     /*
      * *****************************
@@ -65,41 +31,58 @@ public class ExcelReadUtils {
         if (cell == null) {
             return null;
         }
-        return getStrFromCell(cell);
+        return cell.getStringCellValue();
+    }
+
+    public static String getTrimStrFromCellDefaultNull(Cell cell) {
+        if (cell == null) {
+            return null;
+        }
+        return cell.getStringCellValue().trim();
     }
 
     public static Integer getIntFromCellDefaultNull(Cell cell) {
         if (cell == null) {
             return null;
         }
-        return getIntFromCell(cell);
+        CellType cellType = cell.getCellType();
+        switch (cellType) {
+            case NUMERIC:
+                return (int) cell.getNumericCellValue();
+            case STRING:
+                return Integer.valueOf(cell.getStringCellValue().trim());
+            default:
+                return null;
+        }
     }
 
     public static Long getLongFromCellDefaultNull(Cell cell) {
         if (cell == null) {
             return null;
         }
-        return getLongFromCell(cell);
+        CellType cellType = cell.getCellType();
+        switch (cellType) {
+            case NUMERIC:
+                return (long) cell.getNumericCellValue();
+            case STRING:
+                return Long.valueOf(cell.getStringCellValue().trim());
+            default:
+                return null;
+        }
     }
 
-    public static BigDecimal getDecimalFromCellDefaultNull(Cell cell, int scale) {
+    public static Double getDoubleFromCellDefaultNull(Cell cell) {
         if (cell == null) {
             return null;
         }
-        return getDecimalFromCell(cell, scale);
-    }
-
-    public static BigDecimal getDecimalFromCellDefaultNull(Cell cell) {
-        if (cell == null) {
-            return null;
+        CellType cellType = cell.getCellType();
+        switch (cellType) {
+            case NUMERIC:
+                return cell.getNumericCellValue();
+            case STRING:
+                return Double.valueOf(cell.getStringCellValue().trim());
+            default:
+                return null;
         }
-        return getDecimalFromCell(cell);
-    }
-
-    public static Date getDateFromCellDefaultNull(Cell cell) {
-        if (cell == null) {
-            return null;
-        }
-        return cell.getDateCellValue();
     }
 }

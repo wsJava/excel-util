@@ -6,13 +6,10 @@ import org.apache.poi.ss.usermodel.Row;
 import org.apache.poi.ss.usermodel.Sheet;
 import org.apache.poi.ss.usermodel.Workbook;
 import org.apache.poi.xssf.usermodel.XSSFWorkbook;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 import top.lvjp.excel.constant.FileTypeEnum;
 import top.lvjp.excel.constant.ReadOperatorEnum;
 import top.lvjp.excel.operator.Reader;
 import top.lvjp.excel.operator.Writer;
-import top.lvjp.excel.utils.ReadResult;
 
 import java.io.*;
 import java.util.*;
@@ -26,33 +23,6 @@ import java.util.*;
  */
 public class ExcelUtil {
 
-    private static final Logger log = LoggerFactory.getLogger(ExcelUtil.class);
-
-    /**
-     * 根据 excel 文件，获取对应的工作薄对象
-     *
-     * @param file excel 文件
-     * @return workbook
-     * @throws IOException IO 创建工作薄时可能抛出 IO 异常，自行处理
-     */
-    public Workbook getNewWorkbook(File file) throws IOException {
-        Objects.requireNonNull(file, "file must not be null");
-        Workbook workbook;
-        String fileName = file.getName();
-        FileTypeEnum fileType = FileTypeEnum.ofFileName(fileName);
-
-        try (BufferedInputStream buffer = new BufferedInputStream(new FileInputStream(file))) {
-            if (FileTypeEnum.XLS == fileType) {
-                workbook = new HSSFWorkbook(buffer);
-            } else if (FileTypeEnum.XLSX == fileType) {
-                workbook = new XSSFWorkbook(buffer);
-            } else {
-                throw new RuntimeException("不支持的文件类型");
-            }
-        }
-        return workbook;
-    }
-
     /**
      * 读取 excel 文件
      *
@@ -64,9 +34,9 @@ public class ExcelUtil {
      * @return 读取 excel 得到的数据
      * @throws IOException 生成工作薄对象时可能抛出 IO 异常
      */
-    public <T> List<T> readExcel(File file, int sheetIndex, int startRow, Reader<T> reader) throws IOException {
+    public static <T> List<T> readExcel(File file, int sheetIndex, int startRow, Reader<T> reader) throws IOException {
         Objects.requireNonNull(file, "file must not be null");
-        Workbook workbook = getNewWorkbook(file);
+        Workbook workbook = getWorkbook(file);
         return readExcel(workbook, sheetIndex, startRow, reader);
     }
 
@@ -82,7 +52,7 @@ public class ExcelUtil {
      * @return 读取 excel 得到的数据
      * @throws IOException 生成工作薄对象时可能抛出 IO 异常
      */
-    public <T> List<T> readExcel(InputStream inputStream, FileTypeEnum fileType, int sheetIndex, int startRow, Reader<T> reader) throws IOException {
+    public static <T> List<T> readExcel(InputStream inputStream, FileTypeEnum fileType, int sheetIndex, int startRow, Reader<T> reader) throws IOException {
         Objects.requireNonNull(inputStream, "inputStream must not be null");
         Objects.requireNonNull(fileType, "fileType must not be null");
         Workbook workbook;
@@ -106,7 +76,7 @@ public class ExcelUtil {
      * @param <T>        数据类型
      * @return 读取 excel 得到的数据
      */
-    public <T> List<T> readExcel(Workbook workbook, int sheetIndex, int startRow, Reader<T> reader) {
+    public static <T> List<T> readExcel(Workbook workbook, int sheetIndex, int startRow, Reader<T> reader) {
         Objects.requireNonNull(workbook, "workbook must not be null");
         Objects.requireNonNull(reader, "reader must not be null");
         Sheet sheet = workbook.getSheetAt(sheetIndex);
@@ -134,48 +104,59 @@ public class ExcelUtil {
     }
 
     /**
-     * 将数据写入到 Excel 文件中
+     * 将数据写入到指定 Excel 文件中，如果文件已存在则覆盖原有内容，不存在则创建
      *
-     * @param data       待写入的数据
-     * @param fileName   写入的文件名，如果不存在则主动创建
-     * @param sheetIndex 写入的sheet页
-     * @param startRow   开始行
-     * @param writer     具体写入的方式策略
-     * @param <T>        数据类型
+     * @param data     待写入的数据
+     * @param fileName 写入的文件名，如果不存在则主动创建
+     * @param writer   具体写入的方式策略
+     * @param <T>      数据类型
+     * @return file excel 文件
      * @throws IOException IO异常时抛出，需自行处理
      */
-    public <T> void writeExcel(List<T> data, String fileName, int sheetIndex, int startRow, Writer<T> writer) throws IOException {
+    public static <T> File writeNewExcel(List<T> data, String fileName, Writer<T> writer) throws IOException {
         Objects.requireNonNull(fileName, "fileName must not be null");
         File file = new File(fileName);
         if (!file.exists()) {
-            boolean success = file.mkdirs();
+            boolean success = file.createNewFile();
             if (!success) {
                 throw new RuntimeException("create file=" + fileName + "失败");
             }
         }
         FileTypeEnum fileType = FileTypeEnum.ofFileName(fileName);
         try (OutputStream out = new FileOutputStream(file)) {
-            writeExcel(data, out, fileType, sheetIndex, startRow, writer);
+            writeExcelToOutStream(data, out, fileType, writer);
+        }
+        return file;
+    }
+
+    /**
+     * 将数据追加到已存在的excel文件中
+     *
+     * @param data       需要写入的数据
+     * @param file       已存在的excel文件
+     * @param sheetIndex 指定的 sheet 页， 0开始
+     * @param startRow   指定的开始行，0开始
+     * @param writer     具体写入的方式策略
+     * @param <T>        数据类型
+     */
+    public static <T> void addDataToExcelFile(List<T> data, File file, int sheetIndex, int startRow, Writer<T> writer) throws IOException {
+        Objects.requireNonNull(file, "file must not be null");
+        try (Workbook workbook = getWorkbook(file)) {
+            writeExcelToWorkbook(data, workbook, sheetIndex, startRow, writer);
+            try (OutputStream out = new FileOutputStream(file)) {
+                workbook.write(out);
+            }
         }
     }
 
     /**
      * 将数据写入到 输出流 中
-     *
-     * @param data       待写入的数据
-     * @param out        IO 输入流
-     * @param fileType   excel 文件类型
-     * @param sheetIndex 写入的sheet页
-     * @param startRow   开始行
-     * @param writer     具体写入的方式策略
-     * @param <T>        数据类型
-     * @throws IOException IO异常时抛出，需自行处理
      */
-    public <T> void writeExcel(List<T> data, OutputStream out, FileTypeEnum fileType, int sheetIndex, int startRow, Writer<T> writer) throws IOException {
+    public static <T> void writeExcelToOutStream(List<T> data, OutputStream out, FileTypeEnum fileType, Writer<T> writer) throws IOException {
         Objects.requireNonNull(out, "out must not be null");
         Objects.requireNonNull(writer, "writer must not be null");
-        try (Workbook workbook = getNewWorkbook(fileType)) {
-            writeExcel(data, workbook, sheetIndex, startRow, writer);
+        try (Workbook workbook = createNewWorkbook(fileType)) {
+            writeExcelToWorkbook(data, workbook, 0, 0, writer);
             workbook.write(out);
         }
     }
@@ -186,16 +167,16 @@ public class ExcelUtil {
      * @param data       待写入的数据
      * @param workbook   工作薄
      * @param sheetIndex 写入的sheet页
-     * @param startRow   开始行
+     * @param startRow   开始行，从0开始
      * @param writer     具体写入的方式策略
      * @param <T>        数据类型
      */
-    public <T> void writeExcel(List<T> data, Workbook workbook, int sheetIndex, int startRow, Writer<T> writer) {
-        // todo test null? sheetIndex 100
+    public static <T> void writeExcelToWorkbook(List<T> data, Workbook workbook, int sheetIndex, int startRow, Writer<T> writer) {
         Objects.requireNonNull(data, "data must not be null");
         Objects.requireNonNull(workbook, "workbook must not be null");
         Objects.requireNonNull(writer, "writer must not be null");
-        Sheet sheet = workbook.getSheetAt(sheetIndex);
+
+        Sheet sheet = getOrCreateSheet(workbook, sheetIndex);
         String[] headers = writer.getHeaders();
 
         if (headers != null) {
@@ -212,7 +193,42 @@ public class ExcelUtil {
         }
     }
 
-    private Workbook getNewWorkbook(FileTypeEnum fileTypeEnum) {
+    private static Sheet getOrCreateSheet(Workbook workbook, int sheetIndex) {
+        Sheet sheet;
+        try {
+            sheet = workbook.getSheetAt(sheetIndex);
+        } catch (IllegalArgumentException e) {
+            sheet = workbook.createSheet();
+        }
+        return sheet;
+    }
+
+    /**
+     * 根据 excel 文件，获取对应的工作薄对象
+     */
+    public static Workbook getWorkbook(File file) throws IOException {
+        Objects.requireNonNull(file, "file must not be null");
+        Workbook workbook;
+        String fileName = file.getName();
+        FileTypeEnum fileType = FileTypeEnum.ofFileName(fileName);
+
+        try (BufferedInputStream buffer = new BufferedInputStream(new FileInputStream(file))) {
+            if (FileTypeEnum.XLS == fileType) {
+                workbook = new HSSFWorkbook(buffer);
+            } else if (FileTypeEnum.XLSX == fileType) {
+                workbook = new XSSFWorkbook(buffer);
+            } else {
+                throw new RuntimeException("不支持的文件类型");
+            }
+        }
+        return workbook;
+    }
+
+
+    /**
+     * 创建一个指定excel类型的工作薄
+     */
+    public static Workbook createNewWorkbook(FileTypeEnum fileTypeEnum) {
         Workbook workbook;
         if (FileTypeEnum.XLS == fileTypeEnum) {
             workbook = new HSSFWorkbook();
